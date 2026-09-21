@@ -1,0 +1,32 @@
+.TH PATHCHECK 1 "September 2026" "pathcheck 0.1" "User Commands"
+.SH NAME
+pathcheck \- explain command lookup through PATH
+.SH SYNOPSIS
+.B pathcheck
+.I program
+.SH DESCRIPTION
+Supply exactly one nonempty command name without a slash.
+Invalid arguments produce a diagnostic on standard error and exit status 2.
+.PP
+.B pathcheck
+examines each directory in the PATH environment variable for the named program.
+It reports executable matches, non-executable files, directories, and the first executable candidate that would be selected by PATH order.
+.PP
+Later executable candidates are reported as shadowed.
+An empty PATH component is treated as the current directory.
+.SH EXIT STATUS
+.TP
+.B 0
+An executable candidate was found.
+.TP
+.B 1
+No executable candidate was found, or a runtime error occurred.
+.TP
+.B 2
+Invalid command-line usage.
+.SH NOTES
+The implementation uses ANSI C / C89 language features plus POSIX filesystem interfaces such as stat(2) and access(2).
+.SH SEE ALSO
+.BR sh (1),
+.BR execvp (3),
+.BR environ (7)

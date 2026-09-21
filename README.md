@@ -1,58 +1,72 @@
 # pathcheck
 
-`pathcheck` is a C89 project with a long-term destination: a tiny operating
-system kernel. The host program and kernel deliberately live together so that
-we can compare normal C (with an operating system and standard library) with
-freestanding C (where we provide everything ourselves).
+`pathcheck` explains how a Unix shell-style `PATH` search resolves a command name.
 
-## Current milestone
+It is intentionally small: one program, one job.
 
-- `pathcheck.c` is the hosted-C apprenticeship project. It parses `PATH`
-  without modifying the environment, checks every candidate, and identifies
-  the selected executable and any shadowed matches.
-- `kernel/boot.S` supplies a Multiboot header, a stack, and the assembly entry
-  point needed before C can run.
-- `kernel/kernel.c` is freestanding C. It writes a greeting directly to VGA
-  text memory and to QEMU's debug port.
-- `kernel/linker.ld` controls the kernel's memory layout and entry point.
+## Goals
 
-Build `pathcheck` and run its tests:
+- ANSI C / C89 language level
+- Small POSIX surface area
+- No GNU-only helper functions
+- Explicit memory ownership
+- Predictable exit status
+- Useful diagnostics
+
+## Build
 
 ```sh
-make pathcheck
+make
+```
+
+The default build is intentionally strict:
+
+```sh
+cc -std=c89 -pedantic -Wall -Wextra -Werror -O2 -o pathcheck pathcheck.c
+```
+
+## Use
+
+```sh
+./pathcheck cc
+./pathcheck sh
+./pathcheck python
+```
+
+Supply exactly one nonempty command name without `/`. Invalid arguments produce a diagnostic on standard error and exit status 2.
+
+The first executable found is marked `selected`. Later executable matches are marked `shadowed`.
+
+An empty `PATH` component is interpreted as the current directory, matching traditional Unix `PATH` semantics.
+
+## Exit status
+
+- `0` — at least one executable match was found
+- `1` — no executable match was found, or a runtime failure occurred
+- `2` — command-line usage error
+
+## Tests
+
+```sh
 make test
 ```
 
-The hosted program is deliberately compiled as strict C89 with no GNU helper
-functions. It returns 0 when it finds an executable, 1 when it does not (or
-cannot inspect `PATH`), and 2 for incorrect command-line usage.
-
-Build and check both the utility and kernel scaffold with `make check`.
-
-Boot the kernel in QEMU:
+## Install
 
 ```sh
-make run
+sudo make install
 ```
 
-You should see `pathcheck kernel: hello from freestanding C` in the terminal.
-QEMU will keep running because the kernel intentionally halts; exit with
-<kbd>Ctrl</kbd>+<kbd>A</kbd>, then <kbd>X</kbd>.
+Override the prefix if desired:
 
-## Learning roadmap
+```sh
+make PREFIX="$HOME/.local" install
+```
 
-1. Diagnose `PATH` itself: duplicate, missing, relative, empty, non-directory,
-   and unsafe world-writable components; then polish documentation and tests.
-2. Strengthen the kernel foundation: serial output, a tiny `printf`, and a
-   repeatable boot smoke test.
-3. Learn the machine: Global Descriptor Table, Interrupt Descriptor Table,
-   exceptions, and keyboard/timer interrupts.
-4. Manage memory: parse the bootloader memory map, add a physical-page
-   allocator, enable paging, then add a kernel heap.
-5. Add kernel services: processes, scheduling, system calls, and a small
-   in-memory filesystem.
-6. Return to the name: run `pathcheck` as a user program inside our own OS.
+## Current scope
 
-This is an educational kernel, not a secure or production operating system.
-We will keep each milestone small, observable, and testable before adding the
-next subsystem.
+Version 0.1 deliberately does not diagnose duplicate, missing, relative, or insecure `PATH` directories yet. Those belong in the next milestone after the basic lookup behavior is solid.
+
+## Development plan
+
+See [ROADMAP.md](ROADMAP.md) for milestones and [TODO.md](TODO.md) for the ordered checklist. The next step is to strengthen lookup validation and regression coverage, then add PATH diagnostics.

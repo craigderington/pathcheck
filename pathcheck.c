@@ -4,124 +4,153 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
-enum candidate_kind {
-    CANDIDATE_MISSING,
-    CANDIDATE_DIRECTORY,
-    CANDIDATE_NOT_EXECUTABLE,
-    CANDIDATE_EXECUTABLE
-};
+#define EXIT_FOUND 0
+#define EXIT_NOT_FOUND 1
+#define EXIT_USAGE 2
 
-static char *
-make_candidate(const char *directory, size_t directory_length,
-               const char *program)
+static void usage(const char *progname)
 {
-    size_t program_length;
-    size_t total_length;
-    char *candidate;
+    fprintf(stderr, "usage: %s program\n", progname);
+}
 
-    program_length = strlen(program);
-    if (directory_length > (size_t)-1 - program_length - 2)
+static char *join_path(const char *dir, size_t dir_len, const char *program)
+{
+    size_t prog_len;
+    size_t need_slash;
+    size_t total;
+    char *result;
+
+    prog_len = strlen(program);
+    need_slash = (dir_len > 0 && dir[dir_len - 1] == '/') ? 0U : 1U;
+
+    if (dir_len > (size_t)-1 - prog_len - need_slash - 1U)
         return NULL;
 
-    total_length = directory_length + 1 + program_length + 1;
-    candidate = malloc(total_length);
-    if (candidate == NULL)
+    total = dir_len + need_slash + prog_len + 1U;
+    result = (char *)malloc(total);
+    if (result == NULL)
         return NULL;
 
-    if (directory_length == 0) {
-        candidate[0] = '.';
-        directory_length = 1;
-    } else {
-        memcpy(candidate, directory, directory_length);
+    if (dir_len > 0)
+        memcpy(result, dir, dir_len);
+
+    if (need_slash != 0U)
+        result[dir_len] = '/';
+
+    memcpy(result + dir_len + need_slash, program, prog_len);
+    result[total - 1U] = '\0';
+
+    return result;
+}
+
+static int inspect_candidate(const char *candidate)
+{
+    struct stat st;
+
+    if (stat(candidate, &st) != 0) {
+        printf("  %-40s not found\n", candidate);
+        return 0;
     }
 
-    candidate[directory_length] = '/';
-    memcpy(candidate + directory_length + 1, program, program_length + 1);
-    return candidate;
+    if (S_ISDIR(st.st_mode)) {
+        printf("  %-40s directory\n", candidate);
+        return 0;
+    }
+
+    if (access(candidate, X_OK) == 0) {
+        printf("  %-40s executable\n", candidate);
+        return 1;
+    }
+
+    printf("  %-40s exists, not executable\n", candidate);
+    return 0;
 }
 
-static enum candidate_kind
-inspect_candidate(const char *candidate)
+int main(int argc, char **argv)
 {
-    struct stat information;
-
-    if (stat(candidate, &information) != 0)
-        return CANDIDATE_MISSING;
-    if (S_ISDIR(information.st_mode))
-        return CANDIDATE_DIRECTORY;
-    if (access(candidate, X_OK) != 0)
-        return CANDIDATE_NOT_EXECUTABLE;
-    return CANDIDATE_EXECUTABLE;
-}
-
-static const char *
-kind_name(enum candidate_kind kind, int already_selected)
-{
-    if (kind == CANDIDATE_DIRECTORY)
-        return "is a directory";
-    if (kind == CANDIDATE_NOT_EXECUTABLE)
-        return "not executable";
-    if (kind == CANDIDATE_EXECUTABLE && already_selected)
-        return "executable  <-- shadowed";
-    if (kind == CANDIDATE_EXECUTABLE)
-        return "executable  <-- selected";
-    return "not found";
-}
-
-int
-main(int argc, char **argv)
-{
-    char *path;
-    const char *component;
-    const char *separator;
+    const char *path;
+    const char *p;
+    const char *start;
+    const char *dir_text;
+    size_t dir_len;
     char *candidate;
-    size_t component_length;
-    enum candidate_kind kind;
+    int found;
     int selected;
-    int position;
+    int entry_no;
 
     if (argc != 2) {
-        fprintf(stderr, "usage: pathcheck program\n");
-        return 2;
+        usage(argv[0]);
+        return EXIT_USAGE;
+    }
+
+    if (argv[1][0] == '\0') {
+        fprintf(stderr, "pathcheck: program name must not be empty\n");
+        return EXIT_USAGE;
+    }
+
+    if (strchr(argv[1], '/') != NULL) {
+        fprintf(stderr, "pathcheck: program name must not contain '/'\n");
+        return EXIT_USAGE;
     }
 
     path = getenv("PATH");
-
     if (path == NULL) {
         fprintf(stderr, "pathcheck: PATH is not set\n");
-        return 1;
+        return EXIT_NOT_FOUND;
     }
 
     printf("%s:\n", argv[1]);
 
-    component = path;
+    p = path;
+    start = path;
+    found = 0;
     selected = 0;
-    position = 1;
-    for (;;) {
-        separator = strchr(component, ':');
-        if (separator == NULL)
-            component_length = strlen(component);
-        else
-            component_length = (size_t)(separator - component);
+    entry_no = 1;
 
-        candidate = make_candidate(component, component_length, argv[1]);
-        if (candidate == NULL) {
-            fprintf(stderr, "pathcheck: out of memory\n");
-            return 1;
+    for (;;) {
+        if (*p == ':' || *p == '\0') {
+            dir_len = (size_t)(p - start);
+            dir_text = start;
+
+            if (dir_len == 0U) {
+                dir_text = ".";
+                dir_len = 1U;
+            }
+
+            candidate = join_path(dir_text, dir_len, argv[1]);
+            if (candidate == NULL) {
+                fprintf(stderr, "pathcheck: out of memory\n");
+                return EXIT_NOT_FOUND;
+            }
+
+            printf("[%d] ", entry_no);
+            found = inspect_candidate(candidate);
+
+            if (found != 0) {
+                if (selected == 0) {
+                    printf("      selected\n");
+                    selected = 1;
+                } else {
+                    printf("      shadowed\n");
+                }
+            }
+
+            free(candidate);
+            entry_no++;
+
+            if (*p == '\0')
+                break;
+
+            start = p + 1;
         }
 
-        kind = inspect_candidate(candidate);
-        printf("  [%d] %-36s %s\n", position, candidate,
-               kind_name(kind, selected));
-        if (kind == CANDIDATE_EXECUTABLE)
-            selected = 1;
-        free(candidate);
-
-        if (separator == NULL)
-            break;
-        component = separator + 1;
-        ++position;
+        p++;
     }
 
-    return selected ? 0 : 1;
+    if (selected == 0) {
+        printf("not found in PATH\n");
+        return EXIT_NOT_FOUND;
+    }
+
+    return EXIT_FOUND;
 }

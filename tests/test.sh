@@ -1,56 +1,73 @@
 #!/bin/sh
-
 set -eu
 
-PATHCHECK=$(pwd)/pathcheck
-TEST_ROOT=${TMPDIR:-/tmp}/pathcheck-test-$$
+BIN=${1:-./pathcheck}
+case "$BIN" in
+    /*) ;;
+    *) BIN="$(pwd)/${BIN#./}" ;;
+esac
+TMPDIR_BASE=${TMPDIR:-/tmp}
+T="$TMPDIR_BASE/pathcheck-test-$$"
+mkdir -p "$T/a" "$T/b"
+trap 'rm -rf "$T"' EXIT HUP INT TERM
 
-cleanup()
+# Keep each argument intact, including an explicitly empty argument.
+expect_usage_error()
 {
-    rm -rf "$TEST_ROOT"
+    expected_message=$1
+    shift
+    status=0
+    PATH="$T/a" "$BIN" "$@" > "$T/usage-out" 2> "$T/usage-err" || status=$?
+    if [ "$status" -ne 2 ]; then
+        echo "expected usage status 2, got $status: $expected_message" >&2
+        exit 1
+    fi
+    if [ -s "$T/usage-out" ]; then
+        echo "usage error unexpectedly wrote to stdout" >&2
+        exit 1
+    fi
+    grep -F "$expected_message" "$T/usage-err" >/dev/null
 }
 
-trap cleanup EXIT HUP INT TERM
-mkdir -p "$TEST_ROOT/first" "$TEST_ROOT/second"
+expect_usage_error 'usage:'
+expect_usage_error 'usage:' demo extra
+expect_usage_error "program name must not contain '/'" ./demo
+expect_usage_error 'program name must not be empty' ''
 
-make_program()
-{
-    file=$1
-    printf '#!/bin/sh\nexit 0\n' > "$file"
-    chmod +x "$file"
-}
+cat > "$T/a/demo" <<'SCRIPT'
+#!/bin/sh
+exit 0
+SCRIPT
+chmod +x "$T/a/demo"
 
-make_program "$TEST_ROOT/first/tool"
-make_program "$TEST_ROOT/second/tool"
-make_program "$TEST_ROOT/localtool"
-printf 'plain file\n' > "$TEST_ROOT/first/plain"
-mkdir "$TEST_ROOT/first/folder"
+cat > "$T/b/demo" <<'SCRIPT'
+#!/bin/sh
+exit 0
+SCRIPT
+chmod +x "$T/b/demo"
 
-output=$(PATH="$TEST_ROOT/first:$TEST_ROOT/second" "$PATHCHECK" tool)
-printf '%s\n' "$output" | grep -q "$TEST_ROOT/first/tool.*selected"
-printf '%s\n' "$output" | grep -q "$TEST_ROOT/second/tool.*shadowed"
+PATH="$T/a:$T/b" "$BIN" demo > "$T/out1"
+grep 'selected' "$T/out1" >/dev/null
+grep 'shadowed' "$T/out1" >/dev/null
 
-if PATH="$TEST_ROOT/first" "$PATHCHECK" absent >/dev/null 2>&1; then
-    echo "expected absent program to return 1" >&2
+echo data > "$T/a/noexec"
+if PATH="$T/a" "$BIN" noexec > "$T/out2" 2>&1; then
+    echo "expected non-executable file test to fail" >&2
     exit 1
 fi
+grep 'exists, not executable' "$T/out2" >/dev/null
 
-output=$(PATH="$TEST_ROOT/first" "$PATHCHECK" plain 2>&1 || true)
-printf '%s\n' "$output" | grep -q "not executable"
-
-output=$(PATH="$TEST_ROOT/first" "$PATHCHECK" folder 2>&1 || true)
-printf '%s\n' "$output" | grep -q "is a directory"
-
-(cd "$TEST_ROOT" && PATH=":/nowhere" "$PATHCHECK" localtool) |
-    grep -q "./localtool.*selected"
-
-if env -u PATH "$PATHCHECK" tool >/dev/null 2>&1; then
-    echo "expected an unset PATH to return 1" >&2
+if PATH="$T/a" "$BIN" missing > "$T/out3" 2>&1; then
+    echo "expected missing program test to fail" >&2
     exit 1
 fi
+grep 'not found in PATH' "$T/out3" >/dev/null
 
-status=0
-"$PATHCHECK" >/dev/null 2>&1 || status=$?
-test "$status" -eq 2
+(
+    cd "$T"
+    cp a/demo ./localdemo
+    PATH=":$T/a" "$BIN" localdemo > "$T/out4"
+)
+grep './localdemo' "$T/out4" >/dev/null
 
-echo "pathcheck tests passed"
+echo "all tests passed"
