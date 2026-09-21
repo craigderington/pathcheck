@@ -103,6 +103,8 @@ Lookup found no executable candidate, PATH was unset, or a runtime error occurre
 .TP
 .B 2
 Invalid command-line usage.
+.PP
+Output write failures return status 1, including failures while displaying help.
 .SH NOTES
 Only filesystem candidates are inspected; shell aliases, functions, builtins,
 and cached command locations are not resolved.

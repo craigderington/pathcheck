@@ -344,4 +344,17 @@ for name in --path --help --unknown --; do
     expect_matches "selected:$T/a/$name"
 done
 
+
+# /dev/full deterministically rejects writes, including buffered output.
+if [ -c /dev/full ] && [ -w /dev/full ]; then
+    for argument in --help --path demo; do
+        status=0
+        PATH="$T/a" "$BIN" "$argument" > /dev/full 2> "$T/write-err" || status=$?
+        test "$status" -eq 1
+        grep -F 'cannot write standard output' "$T/write-err" >/dev/null
+    done
+else
+    echo "skip: /dev/full unavailable for output-failure regression"
+fi
+
 echo "all tests passed"

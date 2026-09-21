@@ -18,6 +18,19 @@ static void usage(FILE *stream, const char *progname)
             "       %s --help\n", progname, progname, progname);
 }
 
+/* Buffered output errors may appear only when the stream is flushed. */
+static int finish_output(int status)
+{
+    int flush_failed;
+
+    flush_failed = (fflush(stdout) == EOF);
+    if (flush_failed || ferror(stdout)) {
+        fprintf(stderr, "pathcheck: cannot write standard output\n");
+        return EXIT_NOT_FOUND;
+    }
+    return status;
+}
+
 /* Returns allocated storage owned by the caller. */
 static char *join_path(const char *dir, size_t dir_len, const char *program)
 {
@@ -183,7 +196,7 @@ int main(int argc, char **argv)
                "Use -- before a command name beginning with '-'.\n"
                "Status: 0 success (warnings allowed), 1 no match or runtime "
                "failure, 2 usage error.\n");
-        return EXIT_FOUND;
+        return finish_output(EXIT_FOUND);
     }
     if (argc == 2 && strcmp(argv[1], "--path") == 0) {
         /* NULL program selects standalone inspection. */
@@ -217,7 +230,6 @@ int main(int argc, char **argv)
 
     p = path;
     start = path;
-    found = 0;
     selected = 0;
     had_error = 0;
     entry_no = 1;
@@ -307,5 +319,5 @@ int main(int argc, char **argv)
         return EXIT_NOT_FOUND;
     }
 
-    return EXIT_FOUND;
+    return finish_output(EXIT_FOUND);
 }

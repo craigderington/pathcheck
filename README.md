@@ -131,6 +131,8 @@ only the candidates successfully inspected. In `--path` mode the summary is
 filesystem errors in both modes. Missing directories and other warnings alone
 still return 0 in `--path` mode.
 
+Output write failures return status 1, including failures while displaying help.
+
 ## Tests
 
 ```sh
