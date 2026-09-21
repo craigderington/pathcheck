@@ -31,9 +31,38 @@ cc -std=c89 -pedantic -Wall -Wextra -Werror -O2 -o pathcheck pathcheck.c
 ./pathcheck cc
 ./pathcheck sh
 ./pathcheck python
+./pathcheck --path
+./pathcheck --help
+./pathcheck -- --path
 ```
 
-Supply exactly one nonempty command name without `/`. Invalid arguments produce a diagnostic on standard error and exit status 2.
+For command lookup, supply exactly one nonempty name without `/`.
+Use `--` before a name beginning with `-`, including a command literally named
+`--path` or `--help`. Unknown options and extra arguments are usage errors:
+a diagnostic on standard error and status 2.
+
+`--path` inspects PATH entries without looking for a command. It prints a
+`PATH:` heading, then each directory with its entry number and diagnostics.
+Empty components display as `. (empty entry)`. For example:
+
+```sh
+PATH=:: ./pathcheck --path
+```
+
+```text
+PATH:
+[1] . (empty entry)
+      warning: PATH[1] empty entry searches current directory
+[2] . (empty entry)
+      warning: PATH[2] duplicates PATH[1]
+      warning: PATH[2] empty entry searches current directory
+[3] . (empty entry)
+      warning: PATH[3] duplicates PATH[1]
+      warning: PATH[3] empty entry searches current directory
+```
+
+Additional mode-bit warnings depend on the current directory.
+`--help` prints usage to standard output and returns 0 without inspecting PATH.
 
 Only regular files that pass the executable permission check qualify for selection.
 Symlinks are followed: links to executable regular files qualify; dangling links
@@ -87,8 +116,8 @@ permissions, mount options, and concurrent filesystem changes are not evaluated.
 
 ## Exit status
 
-- `0` — at least one executable match was found and no inspection error occurred
-- `1` — no executable match was found, or a runtime failure occurred
+- `0` — lookup found an executable without inspection errors; or `--path` completed without inspection errors (warnings allowed); or help was displayed
+- `1` — lookup found no executable, PATH is unset, or a runtime failure occurred
 - `2` — command-line usage error
 
 Missing candidates and non-directory path components are ordinary misses.
@@ -97,7 +126,10 @@ Other inspection failures produce a diagnostic on standard error, including the
 candidate path and system error. The search continues, but any inspection error
 makes the final status 1, even when a match is found. Output then ends with
 `lookup incomplete: inspection errors occurred`; selected/shadowed labels describe
-only the candidates successfully inspected.
+only the candidates successfully inspected. In `--path` mode the summary is
+`inspection incomplete: inspection errors occurred`. Inspection continues after
+filesystem errors in both modes. Missing directories and other warnings alone
+still return 0 in `--path` mode.
 
 ## Tests
 
@@ -128,4 +160,4 @@ relative entries, and world-writable directories.
 
 ## Development plan
 
-See [ROADMAP.md](ROADMAP.md) for milestones and [TODO.md](TODO.md) for the ordered checklist. Lookup and PATH diagnostics are complete; the next step is standalone PATH inspection with `--path`.
+See [ROADMAP.md](ROADMAP.md) for milestones and [TODO.md](TODO.md) for the ordered checklist. Lookup, PATH diagnostics, and standalone inspection are complete; release readiness is next.
