@@ -10,9 +10,11 @@
 #define EXIT_NOT_FOUND 1
 #define EXIT_USAGE 2
 
-static void usage(const char *progname)
+static void usage(FILE *stream, const char *progname)
 {
-    fprintf(stderr, "usage: %s program\n", progname);
+    fprintf(stream, "usage: %s [--] program\n"
+            "       %s --path\n"
+            "       %s --help\n", progname, progname, progname);
 }
 
 /* Returns allocated storage owned by the caller. */
@@ -160,6 +162,7 @@ static int inspect_candidate(const char *candidate)
 int main(int argc, char **argv)
 {
     const char *path;
+    const char *program;
     const char *p;
     const char *start;
     const char *dir_text;
@@ -172,17 +175,32 @@ int main(int argc, char **argv)
     int had_error;
     unsigned long entry_no;
 
-    if (argc != 2) {
-        usage(argv[0]);
+    program = NULL;
+    if (argc == 2 && strcmp(argv[1], "--help") == 0) {
+        usage(stdout, argv[0]);
+        printf("\nExplain command lookup or inspect PATH entries.\n"
+               "Use -- before a command name beginning with '-'.\n"
+               "Status: 0 success (warnings allowed), 1 no match or runtime "
+               "failure, 2 usage error.\n");
+        return EXIT_FOUND;
+    }
+    if (argc == 2 && strcmp(argv[1], "--path") == 0) {
+        /* NULL program selects standalone inspection. */
+    } else if (argc == 3 && strcmp(argv[1], "--") == 0) {
+        program = argv[2];
+    } else if (argc == 2 && argv[1][0] != '-') {
+        program = argv[1];
+    } else {
+        usage(stderr, argv[0]);
         return EXIT_USAGE;
     }
 
-    if (argv[1][0] == '\0') {
+    if (program != NULL && program[0] == '\0') {
         fprintf(stderr, "pathcheck: program name must not be empty\n");
         return EXIT_USAGE;
     }
 
-    if (strchr(argv[1], '/') != NULL) {
+    if (program != NULL && strchr(program, '/') != NULL) {
         fprintf(stderr, "pathcheck: program name must not contain '/'\n");
         return EXIT_USAGE;
     }
@@ -194,7 +212,7 @@ int main(int argc, char **argv)
         return EXIT_NOT_FOUND;
     }
 
-    printf("%s:\n", argv[1]);
+    printf("%s:\n", program != NULL ? program : "PATH");
 
     p = path;
     start = path;
@@ -214,24 +232,38 @@ int main(int argc, char **argv)
                 dir_len = 1U;
             }
 
-            candidate = join_path(dir_text, dir_len, argv[1]);
-            if (candidate == NULL) {
-                fprintf(stderr, "pathcheck: cannot allocate candidate path\n");
+            /* Both modes share the same owned directory copy and diagnostics. */
+            if (dir_len == (size_t)-1) {
+                fprintf(stderr, "pathcheck: PATH entry too long\n");
                 return EXIT_NOT_FOUND;
             }
+            directory = (char *)malloc(dir_len + 1U);
+            if (directory == NULL) {
+                fprintf(stderr, "pathcheck: cannot allocate PATH entry\n");
+                return EXIT_NOT_FOUND;
+            }
+            memcpy(directory, dir_text, dir_len);
+            directory[dir_len] = '\0';
 
-            printf("[%lu] ", entry_no);
-            found = inspect_candidate(candidate);
+            if (program == NULL) {
+                printf("[%lu] %s%s\n", entry_no, directory,
+                       p == start ? " (empty entry)" : "");
+            } else {
+                candidate = join_path(directory, dir_len, program);
+                if (candidate == NULL) {
+                    free(directory);
+                    fprintf(stderr, "pathcheck: cannot allocate candidate path\n");
+                    return EXIT_NOT_FOUND;
+                }
+                printf("[%lu] ", entry_no);
+                found = inspect_candidate(candidate);
+                free(candidate);
 
-            if (found < 0)
-                had_error = 1;
-
-            if (found > 0) {
-                if (selected == 0) {
-                    printf("      selected\n");
+                if (found < 0)
+                    had_error = 1;
+                if (found > 0) {
+                    printf("      %s\n", selected ? "shadowed" : "selected");
                     selected = 1;
-                } else {
-                    printf("      shadowed\n");
                 }
             }
 
@@ -246,19 +278,9 @@ int main(int argc, char **argv)
             else if (*start != '/')
                 printf("      warning: PATH[%lu] relative entry\n", entry_no);
 
-            /* Own this terminated copy only for the directory inspection. */
-            directory = (char *)malloc(dir_len + 1U);
-            if (directory == NULL) {
-                free(candidate);
-                fprintf(stderr, "pathcheck: cannot allocate PATH entry\n");
-                return EXIT_NOT_FOUND;
-            }
-            memcpy(directory, dir_text, dir_len);
-            directory[dir_len] = '\0';
             if (inspect_directory(directory, entry_no) < 0)
                 had_error = 1;
             free(directory);
-            free(candidate);
             if (*p == '\0')
                 break;
 
@@ -274,11 +296,12 @@ int main(int argc, char **argv)
     }
 
     if (had_error != 0) {
-        printf("lookup incomplete: inspection errors occurred\n");
+        printf("%s incomplete: inspection errors occurred\n",
+               program != NULL ? "lookup" : "inspection");
         return EXIT_NOT_FOUND;
     }
 
-    if (selected == 0) {
+    if (program != NULL && selected == 0) {
         printf("not found in PATH\n");
         return EXIT_NOT_FOUND;
     }
