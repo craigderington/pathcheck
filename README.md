@@ -161,3 +161,29 @@ relative entries, and world-writable directories.
 ## Development plan
 
 See [ROADMAP.md](ROADMAP.md) for milestones and [TODO.md](TODO.md) for the ordered checklist. Lookup, PATH diagnostics, and standalone inspection are complete; release readiness is next.
+
+## Release preparation
+
+Current version: 0.3.0 release candidate. See CHANGELOG.md and VALIDATION.md
+for behavior changes and actual compiler/platform checks. Pathcheck is licensed under GPL-3.0-or-later.
+
+Build and test with `make test`. Stage an installation without administrator
+privileges using `make DESTDIR="/tmp/pathcheck stage" PREFIX=/usr install`;
+use the same variables with `make uninstall` to remove the installed files.
+
+Run `make dist` (requires Python 3) to create
+`dist/pathcheck-0.3.0.tar.gz`. The archive contains an explicit source list,
+excludes binaries and the kernel learning directory, and includes LICENSE. Extract it into a fresh directory and run `make test` there.
+Compilation and normal use do not require Python.
+
+## License
+
+Pathcheck (its source, tests, build scripts, and accompanying documentation)
+is licensed under the GNU General Public License, version 3 or, at your option,
+any later version (SPDX: GPL-3.0-or-later). See [LICENSE](LICENSE) for the terms.
+
+Pathcheck is distributed without any warranty, including the implied warranties
+of merchantability or fitness for a particular purpose.
+
+The separate kernel learning directory is not part of the Pathcheck release
+or this licensing declaration.
