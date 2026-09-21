@@ -3,9 +3,16 @@
 pathcheck \- explain command lookup through PATH
 .SH SYNOPSIS
 .B pathcheck
+.RB [ -- ]
 .I program
+.br
+.B pathcheck --path
+.br
+.B pathcheck --help
 .SH DESCRIPTION
-Supply exactly one nonempty command name without a slash.
+For command lookup, supply exactly one nonempty command name without a slash.
+Use "--" before command names beginning with "-", including "--path" and "--help".
+Unknown options and extra arguments are usage errors.
 Invalid arguments produce a diagnostic on standard error and exit status 2.
 .PP
 .B pathcheck
@@ -29,6 +36,27 @@ path and system error. The search continues, but any inspection error makes
 the final status 1, even if an executable candidate is found.
 Output then ends with "lookup incomplete: inspection errors occurred".
 Selected and shadowed labels describe only successfully inspected candidates.
+.SH OPTIONS
+.TP
+.B --path
+Inspect PATH without looking for a command. Print a "PATH:" heading and each
+directory with its entry number and the same diagnostics as command lookup.
+Empty components display as ". (empty entry)".
+Warnings alone return 0. Unset PATH or runtime failures return 1.
+After filesystem errors, inspection continues and output ends with
+"inspection incomplete: inspection errors occurred".
+.TP
+.B --help
+Print usage to standard output and return 0 without inspecting PATH.
+.TP
+.B --
+End option parsing; exactly one literal command name must follow.
+.SH EXAMPLES
+.nf
+pathcheck sh
+pathcheck --path
+pathcheck -- --path
+.fi
 .SH PATH DIAGNOSTICS
 Entry warnings appear on standard output after the associated candidate and
 selection label. Entry numbers follow the original PATH order.
@@ -67,10 +95,11 @@ permissions, mount options, and concurrent filesystem changes are not evaluated.
 .SH EXIT STATUS
 .TP
 .B 0
-An executable candidate was found and no inspection error occurred.
+An executable candidate was found without inspection errors, standalone PATH
+inspection completed without errors (warnings allowed), or help was displayed.
 .TP
 .B 1
-No executable candidate was found, or a runtime error occurred.
+Lookup found no executable candidate, PATH was unset, or a runtime error occurred.
 .TP
 .B 2
 Invalid command-line usage.
