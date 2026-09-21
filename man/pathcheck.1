@@ -12,12 +12,62 @@ Invalid arguments produce a diagnostic on standard error and exit status 2.
 examines each directory in the PATH environment variable for the named program.
 It reports executable matches, non-executable files, directories, and the first executable candidate that would be selected by PATH order.
 .PP
-Later executable candidates are reported as shadowed.
-An empty PATH component is treated as the current directory.
+Only regular files that pass the executable permission check qualify.
+Symlinks are followed; dangling links are ordinary misses.
+Directories and special files such as FIFOs and devices are never selected.
+Later qualifying candidates are reported as shadowed, including repeated paths.
+.PP
+An empty PATH component is treated as the current directory, including an
+entirely empty PATH and leading, trailing, or consecutive colons.
+Relative entries are resolved from the current directory.
+An unset PATH produces a diagnostic on standard error and status 1.
+.PP
+Missing candidates and non-directory path components are ordinary misses.
+A failed executable permission check is reported as non-executable.
+Other inspection failures are reported on standard error with the candidate
+path and system error. The search continues, but any inspection error makes
+the final status 1, even if an executable candidate is found.
+Output then ends with "lookup incomplete: inspection errors occurred".
+Selected and shadowed labels describe only successfully inspected candidates.
+.SH PATH DIAGNOSTICS
+Entry warnings appear on standard output after the associated candidate and
+selection label. Entry numbers follow the original PATH order.
+For example:
+.PP
+.nf
+      warning: PATH[3] duplicates PATH[1]
+      warning: PATH[4] directory missing
+      warning: PATH[5] not a directory
+      warning: PATH[6] empty entry searches current directory
+      warning: PATH[7] relative entry
+      warning: PATH[8] world-writable directory (sticky bit set)
+.fi
+.PP
+Duplicates reference the first entry with exactly the same component text.
+Repeated empty components count as duplicates; an empty component and "." do not.
+Trailing slashes, alternate spellings, and symlink aliases are not normalized.
+Every entry is still searched in order.
+.PP
+Missing directories, non-directory entries, and non-directory intermediate
+components produce warnings. Warnings alone do not change lookup status.
+Other directory inspection failures produce a standard-error diagnostic and
+status 1, even when a candidate is found.
+.PP
+Empty components are labeled as current-directory searches.
+Nonempty components not starting with "/" are labeled relative, including "."
+and "./bin". These labels describe the original text even for missing directories.
+.PP
+Directories with the other-write mode bit set are labeled world-writable.
+The warning states whether the sticky bit is set and remains in either case.
+The sticky bit restricts removal and renaming of directory entries; it does
+not prevent new entries or make command lookup safe.
+Symlinks are followed, so warnings describe the target directory.
+These mode-bit observations are not a security audit: ACLs, parent-directory
+permissions, mount options, and concurrent filesystem changes are not evaluated.
 .SH EXIT STATUS
 .TP
 .B 0
-An executable candidate was found.
+An executable candidate was found and no inspection error occurred.
 .TP
 .B 1
 No executable candidate was found, or a runtime error occurred.
@@ -25,6 +75,10 @@ No executable candidate was found, or a runtime error occurred.
 .B 2
 Invalid command-line usage.
 .SH NOTES
+Only filesystem candidates are inspected; shell aliases, functions, builtins,
+and cached command locations are not resolved.
+An executable permission check does not guarantee successful execution.
+.PP
 The implementation uses ANSI C / C89 language features plus POSIX filesystem interfaces such as stat(2) and access(2).
 .SH SEE ALSO
 .BR sh (1),
